@@ -1,9 +1,10 @@
 /**
  * Firestoreリポジトリ
  * データの永続化・取得を担当
+ * FirestoreApp ライブラリを使用（GAS専用）
  */
 
-import { getFirestore } from '../config/firebase';
+import { getFirestore, fieldsToObject, objectToFields } from '../config/firebase';
 import { COLLECTIONS } from '../config/constants';
 import {
   User,
@@ -16,14 +17,14 @@ import {
   WorkSummary,
   CorrectionRequest,
   CorrectionRequestInput,
+  DailyReport,
+  DailyReportInput,
 } from '../models/Kintai';
 import {
   ShiftEntry,
   ShiftEntryInput,
   ShiftChangeRequest,
   ShiftChangeRequestInput,
-  DailyReport,
-  DailyReportInput,
 } from '../models/Shift';
 
 const db = () => getFirestore();
@@ -35,18 +36,19 @@ const db = () => getFirestore();
  */
 export async function upsertUser(input: UserCreateInput): Promise<User> {
   const now = new Date();
-  const userRef = db().collection(COLLECTIONS.USERS).doc(input.uid);
-  const doc = await userRef.get();
+  const docPath = `${COLLECTIONS.USERS}/${input.uid}`;
+  const existingDoc = db().getDocument(docPath);
 
-  if (doc.exists) {
+  if (existingDoc) {
     // 既存ユーザーの更新
-    const existing = doc.data() as any;
+    const existing = fieldsToObject(existingDoc.fields) as User;
     const updated: Partial<User> = {
       email: input.email || existing.email,
       displayName: input.displayName || existing.displayName,
       updatedAt: now,
     };
-    await userRef.update(updated);
+    const fields = objectToFields(updated);
+    db().updateDocument(docPath, fields, true);
     return { ...existing, ...updated } as User;
   } else {
     // 新規ユーザーの作成
@@ -59,7 +61,8 @@ export async function upsertUser(input: UserCreateInput): Promise<User> {
       createdAt: now,
       updatedAt: now,
     };
-    await userRef.set(newUser);
+    const fields = objectToFields(newUser);
+    db().createDocument(COLLECTIONS.USERS, fields, input.uid);
     return newUser;
   }
 }
@@ -68,28 +71,31 @@ export async function upsertUser(input: UserCreateInput): Promise<User> {
  * ユーザーを取得
  */
 export async function getUser(uid: string): Promise<User | null> {
-  const doc = await db().collection(COLLECTIONS.USERS).doc(uid).get();
-  if (!doc.exists) return null;
-  return doc.data() as User;
+  const docPath = `${COLLECTIONS.USERS}/${uid}`;
+  const doc = db().getDocument(docPath);
+  if (!doc) return null;
+  return fieldsToObject(doc.fields) as User;
 }
 
 /**
  * ユーザーを更新
  */
 export async function updateUser(uid: string, input: UserUpdateInput): Promise<void> {
-  const userRef = db().collection(COLLECTIONS.USERS).doc(uid);
-  await userRef.update({
+  const docPath = `${COLLECTIONS.USERS}/${uid}`;
+  const updateData = {
     ...input,
     updatedAt: new Date(),
-  });
+  };
+  const fields = objectToFields(updateData);
+  db().updateDocument(docPath, fields, true);
 }
 
 /**
  * 全ユーザーを取得
  */
 export async function getAllUsers(): Promise<User[]> {
-  const snapshot = await db().collection(COLLECTIONS.USERS).get();
-  return snapshot.docs.map((doc) => doc.data() as User);
+  const docs = db().query(COLLECTIONS.USERS).Execute();
+  return docs.map((doc) => fieldsToObject(doc.fields) as User);
 }
 
 /* ========== 勤怠打刻 ========== */
@@ -104,12 +110,9 @@ export async function createKintaiRecord(input: KintaiRecordInput): Promise<stri
     ...input,
   };
 
-  await db()
-    .collection(COLLECTIONS.KINTAI)
-    .doc(input.uid)
-    .collection('records')
-    .doc(recordId)
-    .set(record);
+  const collectionPath = `${COLLECTIONS.KINTAI}/${input.uid}/records`;
+  const fields = objectToFields(record);
+  db().createDocument(collectionPath, fields, recordId);
 
   return recordId;
 }
@@ -118,15 +121,14 @@ export async function createKintaiRecord(input: KintaiRecordInput): Promise<stri
  * 指定日の打刻記録を取得
  */
 export async function getKintaiRecordsByDate(uid: string, date: string): Promise<KintaiRecord[]> {
-  const snapshot = await db()
-    .collection(COLLECTIONS.KINTAI)
-    .doc(uid)
-    .collection('records')
-    .where('date', '==', date)
-    .orderBy('timestamp', 'asc')
-    .get();
+  const collectionPath = `${COLLECTIONS.KINTAI}/${uid}/records`;
+  const docs = db()
+    .query(collectionPath)
+    .Where('date', '==', date)
+    .OrderBy('timestamp', 'ASCENDING')
+    .Execute();
 
-  return snapshot.docs.map((doc) => doc.data() as KintaiRecord);
+  return docs.map((doc) => fieldsToObject(doc.fields) as KintaiRecord);
 }
 
 /**
@@ -137,31 +139,29 @@ export async function getKintaiRecordsByRange(
   startDate: Date,
   endDate: Date
 ): Promise<KintaiRecord[]> {
-  const snapshot = await db()
-    .collection(COLLECTIONS.KINTAI)
-    .doc(uid)
-    .collection('records')
-    .where('timestamp', '>=', startDate)
-    .where('timestamp', '<', endDate)
-    .orderBy('timestamp', 'asc')
-    .get();
+  const collectionPath = `${COLLECTIONS.KINTAI}/${uid}/records`;
+  const docs = db()
+    .query(collectionPath)
+    .Where('timestamp', '>=', startDate)
+    .Where('timestamp', '<', endDate)
+    .OrderBy('timestamp', 'ASCENDING')
+    .Execute();
 
-  return snapshot.docs.map((doc) => doc.data() as KintaiRecord);
+  return docs.map((doc) => fieldsToObject(doc.fields) as KintaiRecord);
 }
 
 /**
  * 最新N件の打刻記録を取得（今日の状態確認用）
  */
 export async function getRecentKintaiRecords(uid: string, limit: number = 10): Promise<KintaiRecord[]> {
-  const snapshot = await db()
-    .collection(COLLECTIONS.KINTAI)
-    .doc(uid)
-    .collection('records')
-    .orderBy('timestamp', 'desc')
-    .limit(limit)
-    .get();
+  const collectionPath = `${COLLECTIONS.KINTAI}/${uid}/records`;
+  const docs = db()
+    .query(collectionPath)
+    .OrderBy('timestamp', 'DESCENDING')
+    .Limit(limit)
+    .Execute();
 
-  return snapshot.docs.map((doc) => doc.data() as KintaiRecord).reverse();
+  return docs.map((doc) => fieldsToObject(doc.fields) as KintaiRecord).reverse();
 }
 
 /* ========== 勤務時間サマリー ========== */
@@ -173,34 +173,29 @@ export async function saveWorkSummary(summary: WorkSummary): Promise<void> {
   const [year, month] = summary.date.split('/').map(Number);
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
 
-  await db()
-    .collection(COLLECTIONS.WORKSUM)
-    .doc(summary.uid)
-    .collection(monthKey)
-    .doc('daily')
-    .collection(summary.date)
-    .doc('summary')
-    .set(summary);
+  const collectionPath = `${COLLECTIONS.WORKSUM}/${summary.uid}/${monthKey}/daily/${summary.date}`;
+  const fields = objectToFields(summary);
+  db().createDocument(collectionPath, fields, 'summary');
 }
 
 /**
  * 指定月の勤務時間サマリーを取得
+ * Note: FirestoreAppにはlistCollections相当の機能がないため、月の全日付を試行
  */
 export async function getWorkSummaryByMonth(uid: string, year: number, month: number): Promise<WorkSummary[]> {
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
-
-  const snapshot = await db()
-    .collection(COLLECTIONS.WORKSUM)
-    .doc(uid)
-    .collection(monthKey)
-    .doc('daily')
-    .listCollections();
-
   const summaries: WorkSummary[] = [];
-  for (const collection of snapshot) {
-    const doc = await collection.doc('summary').get();
-    if (doc.exists) {
-      summaries.push(doc.data() as WorkSummary);
+
+  // 月の日数を取得
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  // 各日付のサマリーを取得
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = `${year}/${month}/${day}`;
+    const docPath = `${COLLECTIONS.WORKSUM}/${uid}/${monthKey}/daily/${date}/summary`;
+    const doc = db().getDocument(docPath);
+    if (doc) {
+      summaries.push(fieldsToObject(doc.fields) as WorkSummary);
     }
   }
 
@@ -229,12 +224,18 @@ export async function saveShiftEntry(input: ShiftEntryInput): Promise<string> {
     updatedAt: now,
   };
 
-  await db()
-    .collection(COLLECTIONS.SHIFTS)
-    .doc(input.uid)
-    .collection('entries')
-    .doc(entryId)
-    .set(entry, { merge: true });
+  const collectionPath = `${COLLECTIONS.SHIFTS}/${input.uid}/entries`;
+  const docPath = `${collectionPath}/${entryId}`;
+
+  // 既存ドキュメントをチェック
+  const existingDoc = db().getDocument(docPath);
+  const fields = objectToFields(entry);
+
+  if (existingDoc) {
+    db().updateDocument(docPath, fields, true);
+  } else {
+    db().createDocument(collectionPath, fields, entryId);
+  }
 
   return entryId;
 }
@@ -243,15 +244,11 @@ export async function saveShiftEntry(input: ShiftEntryInput): Promise<string> {
  * シフトエントリーを取得
  */
 export async function getShiftEntry(uid: string, entryId: string): Promise<ShiftEntry | null> {
-  const doc = await db()
-    .collection(COLLECTIONS.SHIFTS)
-    .doc(uid)
-    .collection('entries')
-    .doc(entryId)
-    .get();
+  const docPath = `${COLLECTIONS.SHIFTS}/${uid}/entries/${entryId}`;
+  const doc = db().getDocument(docPath);
 
-  if (!doc.exists) return null;
-  return doc.data() as ShiftEntry;
+  if (!doc) return null;
+  return fieldsToObject(doc.fields) as ShiftEntry;
 }
 
 /**
@@ -262,16 +259,15 @@ export async function getShiftEntriesByRange(
   startDate: string,
   endDate: string
 ): Promise<ShiftEntry[]> {
-  const snapshot = await db()
-    .collection(COLLECTIONS.SHIFTS)
-    .doc(uid)
-    .collection('entries')
-    .where('date', '>=', startDate)
-    .where('date', '<', endDate)
-    .orderBy('date', 'asc')
-    .get();
+  const collectionPath = `${COLLECTIONS.SHIFTS}/${uid}/entries`;
+  const docs = db()
+    .query(collectionPath)
+    .Where('date', '>=', startDate)
+    .Where('date', '<', endDate)
+    .OrderBy('date', 'ASCENDING')
+    .Execute();
 
-  return snapshot.docs.map((doc) => doc.data() as ShiftEntry);
+  return docs.map((doc) => fieldsToObject(doc.fields) as ShiftEntry);
 }
 
 /**
@@ -296,12 +292,8 @@ export async function getAllShiftEntriesByRange(
  * シフトエントリーを削除
  */
 export async function deleteShiftEntry(uid: string, entryId: string): Promise<void> {
-  await db()
-    .collection(COLLECTIONS.SHIFTS)
-    .doc(uid)
-    .collection('entries')
-    .doc(entryId)
-    .delete();
+  const docPath = `${COLLECTIONS.SHIFTS}/${uid}/entries/${entryId}`;
+  db().deleteDocument(docPath);
 }
 
 /* ========== シフト修正申請 ========== */
@@ -320,7 +312,8 @@ export async function createShiftChangeRequest(
     createdAt: new Date(),
   };
 
-  await db().collection(COLLECTIONS.SHIFT_REQUESTS).doc(requestId).set(request);
+  const fields = objectToFields(request);
+  db().createDocument(COLLECTIONS.SHIFT_REQUESTS, fields, requestId);
   return requestId;
 }
 
@@ -328,24 +321,26 @@ export async function createShiftChangeRequest(
  * 保留中のシフト修正申請を取得
  */
 export async function getPendingShiftChangeRequests(): Promise<ShiftChangeRequest[]> {
-  const snapshot = await db()
-    .collection(COLLECTIONS.SHIFT_REQUESTS)
-    .where('status', '==', 'pending')
-    .orderBy('createdAt', 'desc')
-    .get();
+  const docs = db()
+    .query(COLLECTIONS.SHIFT_REQUESTS)
+    .Where('status', '==', 'pending')
+    .OrderBy('createdAt', 'DESCENDING')
+    .Execute();
 
-  return snapshot.docs.map((doc) => doc.data() as ShiftChangeRequest);
+  return docs.map((doc) => fieldsToObject(doc.fields) as ShiftChangeRequest);
 }
 
 /**
  * シフト修正申請を承認
  */
 export async function approveShiftChangeRequest(requestId: string): Promise<ShiftChangeRequest | null> {
-  const doc = await db().collection(COLLECTIONS.SHIFT_REQUESTS).doc(requestId).get();
-  if (!doc.exists) return null;
+  const docPath = `${COLLECTIONS.SHIFT_REQUESTS}/${requestId}`;
+  const doc = db().getDocument(docPath);
+  if (!doc) return null;
 
-  const request = doc.data() as ShiftChangeRequest;
-  await doc.ref.update({ status: 'approved' });
+  const request = fieldsToObject(doc.fields) as ShiftChangeRequest;
+  const fields = objectToFields({ status: 'approved' });
+  db().updateDocument(docPath, fields, true);
 
   return request;
 }
@@ -354,16 +349,17 @@ export async function approveShiftChangeRequest(requestId: string): Promise<Shif
  * シフト修正申請を却下
  */
 export async function denyShiftChangeRequest(requestId: string): Promise<void> {
-  await db().collection(COLLECTIONS.SHIFT_REQUESTS).doc(requestId).update({
-    status: 'denied',
-  });
+  const docPath = `${COLLECTIONS.SHIFT_REQUESTS}/${requestId}`;
+  const fields = objectToFields({ status: 'denied' });
+  db().updateDocument(docPath, fields, true);
 }
 
 /**
  * シフト修正申請を削除
  */
 export async function deleteShiftChangeRequest(requestId: string): Promise<void> {
-  await db().collection(COLLECTIONS.SHIFT_REQUESTS).doc(requestId).delete();
+  const docPath = `${COLLECTIONS.SHIFT_REQUESTS}/${requestId}`;
+  db().deleteDocument(docPath);
 }
 
 /* ========== 打刻修正申請 ========== */
@@ -382,7 +378,8 @@ export async function createCorrectionRequest(
     createdAt: new Date(),
   };
 
-  await db().collection(COLLECTIONS.CORRECTION_REQUESTS).doc(requestId).set(request);
+  const fields = objectToFields(request);
+  db().createDocument(COLLECTIONS.CORRECTION_REQUESTS, fields, requestId);
   return requestId;
 }
 
@@ -390,24 +387,26 @@ export async function createCorrectionRequest(
  * 保留中の打刻修正申請を取得
  */
 export async function getPendingCorrectionRequests(): Promise<CorrectionRequest[]> {
-  const snapshot = await db()
-    .collection(COLLECTIONS.CORRECTION_REQUESTS)
-    .where('status', '==', 'pending')
-    .orderBy('createdAt', 'desc')
-    .get();
+  const docs = db()
+    .query(COLLECTIONS.CORRECTION_REQUESTS)
+    .Where('status', '==', 'pending')
+    .OrderBy('createdAt', 'DESCENDING')
+    .Execute();
 
-  return snapshot.docs.map((doc) => doc.data() as CorrectionRequest);
+  return docs.map((doc) => fieldsToObject(doc.fields) as CorrectionRequest);
 }
 
 /**
  * 打刻修正申請を承認
  */
 export async function approveCorrectionRequest(requestId: string): Promise<CorrectionRequest | null> {
-  const doc = await db().collection(COLLECTIONS.CORRECTION_REQUESTS).doc(requestId).get();
-  if (!doc.exists) return null;
+  const docPath = `${COLLECTIONS.CORRECTION_REQUESTS}/${requestId}`;
+  const doc = db().getDocument(docPath);
+  if (!doc) return null;
 
-  const request = doc.data() as CorrectionRequest;
-  await doc.ref.update({ status: 'approved' });
+  const request = fieldsToObject(doc.fields) as CorrectionRequest;
+  const fields = objectToFields({ status: 'approved' });
+  db().updateDocument(docPath, fields, true);
 
   return request;
 }
@@ -416,16 +415,17 @@ export async function approveCorrectionRequest(requestId: string): Promise<Corre
  * 打刻修正申請を却下
  */
 export async function denyCorrectionRequest(requestId: string): Promise<void> {
-  await db().collection(COLLECTIONS.CORRECTION_REQUESTS).doc(requestId).update({
-    status: 'denied',
-  });
+  const docPath = `${COLLECTIONS.CORRECTION_REQUESTS}/${requestId}`;
+  const fields = objectToFields({ status: 'denied' });
+  db().updateDocument(docPath, fields, true);
 }
 
 /**
  * 打刻修正申請を削除
  */
 export async function deleteCorrectionRequest(requestId: string): Promise<void> {
-  await db().collection(COLLECTIONS.CORRECTION_REQUESTS).doc(requestId).delete();
+  const docPath = `${COLLECTIONS.CORRECTION_REQUESTS}/${requestId}`;
+  db().deleteDocument(docPath);
 }
 
 /* ========== 日報 ========== */
@@ -439,25 +439,26 @@ export async function saveDailyReport(input: DailyReportInput): Promise<void> {
     updatedAt: new Date(),
   };
 
-  await db()
-    .collection(COLLECTIONS.DAILY_REPORTS)
-    .doc(input.uid)
-    .collection(input.date)
-    .doc('report')
-    .set(report);
+  const collectionPath = `${COLLECTIONS.DAILY_REPORTS}/${input.uid}/${input.date}`;
+  const docPath = `${collectionPath}/report`;
+  const fields = objectToFields(report);
+
+  // 既存ドキュメントをチェック
+  const existingDoc = db().getDocument(docPath);
+  if (existingDoc) {
+    db().updateDocument(docPath, fields, false);
+  } else {
+    db().createDocument(collectionPath, fields, 'report');
+  }
 }
 
 /**
  * 日報を取得
  */
 export async function getDailyReport(uid: string, date: string): Promise<DailyReport | null> {
-  const doc = await db()
-    .collection(COLLECTIONS.DAILY_REPORTS)
-    .doc(uid)
-    .collection(date)
-    .doc('report')
-    .get();
+  const docPath = `${COLLECTIONS.DAILY_REPORTS}/${uid}/${date}/report`;
+  const doc = db().getDocument(docPath);
 
-  if (!doc.exists) return null;
-  return doc.data() as DailyReport;
+  if (!doc) return null;
+  return fieldsToObject(doc.fields) as DailyReport;
 }

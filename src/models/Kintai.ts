@@ -81,3 +81,16 @@ export interface CorrectionRequestInput {
   };
   reason: string;
 }
+
+export interface DailyReport {
+  uid: string;
+  date: string; // yyyy/MM/dd
+  content: string;
+  updatedAt: Date;
+}
+
+export interface DailyReportInput {
+  uid: string;
+  date: string;
+  content: string;
+}

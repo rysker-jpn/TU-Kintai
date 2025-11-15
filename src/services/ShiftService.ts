@@ -22,7 +22,7 @@ import {
   deleteShiftChangeRequestFromBackup,
 } from '../repositories/SpreadsheetRepository';
 import { ERROR_MESSAGES } from '../config/constants';
-import { parseYmd, isShiftLocked, toYmd } from '../utils/date';
+import { parseYmd, isShiftLocked } from '../utils/date';
 import {
   ShiftEntry,
   ShiftEntryInput,
@@ -161,7 +161,7 @@ export async function getAllShifts(
  */
 export async function createShiftModificationRequest(
   user: User,
-  input: Omit<ShiftChangeRequestInput, 'uid' | 'userName'>
+  input: Omit<ShiftChangeRequestInput, 'uid' | 'userName' | 'date' | 'before'>
 ): Promise<string> {
   if (!input.reason || !input.reason.trim()) {
     throw new Error('理由は必須です');

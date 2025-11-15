@@ -9,9 +9,7 @@
     "deploy": "npm run build && clasp push && clasp deploy",
     "lint": "eslint src --ext .ts"
   },
-  "dependencies": {
-    "@google-cloud/firestore": "^7.1.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@google/clasp": "^2.4.2",
     "@types/google-apps-script": "^1.0.83",

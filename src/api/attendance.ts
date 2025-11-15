@@ -13,7 +13,6 @@ import {
 } from '../services/KintaiService';
 import { AttendanceAction, WorkLocation } from '../models/Kintai';
 import { ERROR_MESSAGES } from '../config/constants';
-import { minutesToHHMM } from '../utils/date';
 
 /**
  * ユーザー状態を取得

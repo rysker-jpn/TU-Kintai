@@ -18,13 +18,11 @@ import {
   backupDailyReport,
 } from '../repositories/SpreadsheetRepository';
 import { notifyAttendance, notifyDailyReport } from './NotificationService';
-import { ACTIONS, CACHE_DURATION, ERROR_MESSAGES } from '../config/constants';
+import { ACTIONS, CACHE_DURATION } from '../config/constants';
 import { cacheGet, cachePut, cacheRemove, CacheKeys } from '../utils/cache';
 import {
   formatDate,
   toYmd,
-  isSameDate,
-  minutesToHHMM,
 } from '../utils/date';
 import {
   AttendanceAction,
@@ -127,7 +125,7 @@ export async function recordAttendance(
 
   // 退勤の場合：勤務時間を集計
   if (action === ACTIONS.CLOCK_OUT) {
-    await calculateAndSaveWorkSummary(user.uid, user.displayName, todayStr);
+    await calculateAndSaveWorkSummary(user.uid, todayStr);
 
     // 日報を保存
     if (dailyReportContent && dailyReportContent.trim()) {
@@ -165,7 +163,6 @@ export async function recordAttendance(
  */
 async function calculateAndSaveWorkSummary(
   uid: string,
-  userName: string,
   dateStr: string
 ): Promise<void> {
   const records = await getKintaiRecordsByDate(uid, dateStr);
