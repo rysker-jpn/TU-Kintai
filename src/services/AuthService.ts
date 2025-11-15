@@ -13,30 +13,60 @@ import { User, FirebaseAuthUser, UserUpdateInput } from '../models/User';
  * IDトークンを検証し、Firebase認証ユーザー情報を取得
  */
 export async function verifyIdToken(idToken: string): Promise<FirebaseAuthUser> {
-  const apiKey = getFirebaseApiKey();
-  const url = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(
-    apiKey
-  )}`;
+  try {
+    const apiKey = getFirebaseApiKey();
 
-  const response = UrlFetchApp.fetch(url, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify({ idToken }),
-    muteHttpExceptions: true,
-  });
+    // デバッグログ: API Keyの有無を確認
+    if (!apiKey || apiKey.trim() === '') {
+      Logger.log('[ERROR] FIREBASE_API_KEY が Script Properties に設定されていません');
+      throw new Error('FIREBASE_API_KEY が設定されていません。GASのプロジェクト設定 > スクリプトプロパティ で設定してください。');
+    }
 
-  const json = JSON.parse(response.getContentText() || '{}');
-  if (!json.users || !json.users[0]) {
-    throw new Error(ERROR_MESSAGES.INVALID_TOKEN);
+    Logger.log('[DEBUG] IDトークン検証開始');
+    Logger.log(`[DEBUG] API Key: ${apiKey.substring(0, 10)}...`);
+
+    const url = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(
+      apiKey
+    )}`;
+
+    const response = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ idToken }),
+      muteHttpExceptions: true,
+    });
+
+    const statusCode = response.getResponseCode();
+    const responseText = response.getContentText() || '{}';
+
+    Logger.log(`[DEBUG] Firebase API レスポンスコード: ${statusCode}`);
+    Logger.log(`[DEBUG] Firebase API レスポンス: ${responseText.substring(0, 200)}`);
+
+    const json = JSON.parse(responseText);
+
+    if (statusCode !== 200) {
+      Logger.log(`[ERROR] Firebase API エラー: ${JSON.stringify(json)}`);
+      throw new Error(`Firebase認証エラー (${statusCode}): ${json.error?.message || 'Unknown error'}`);
+    }
+
+    if (!json.users || !json.users[0]) {
+      Logger.log('[ERROR] IDトークンが無効です（ユーザー情報なし）');
+      throw new Error(ERROR_MESSAGES.INVALID_TOKEN);
+    }
+
+    const user = json.users[0];
+    Logger.log(`[DEBUG] 認証成功: UID=${user.localId}, Email=${user.email}`);
+
+    return {
+      uid: user.localId,
+      email: user.email || '',
+      displayName:
+        user.displayName || (user.email ? user.email.split('@')[0] : 'ユーザー'),
+    };
+  } catch (error) {
+    Logger.log(`[ERROR] verifyIdToken エラー: ${error}`);
+    throw error;
   }
-
-  const user = json.users[0];
-  return {
-    uid: user.localId,
-    email: user.email || '',
-    displayName:
-      user.displayName || (user.email ? user.email.split('@')[0] : 'ユーザー'),
-  };
 }
 
 /**
