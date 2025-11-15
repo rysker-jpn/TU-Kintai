@@ -4,7 +4,7 @@
 
 import { getFirebaseApiKey } from '../config/firebase';
 import { ERROR_MESSAGES, ROLES, USER_STATUS, CACHE_DURATION } from '../config/constants';
-import { upsertUser, getUser } from '../repositories/FirestoreRepository';
+import { upsertUser, getUser, getAllUsers } from '../repositories/FirestoreRepository';
 import { backupUser } from '../repositories/SpreadsheetRepository';
 import { cacheGet, cachePut, cacheRemove, CacheKeys } from '../utils/cache';
 import { User, FirebaseAuthUser, UserUpdateInput } from '../models/User';
@@ -84,7 +84,8 @@ export async function getOrCreateAppUser(
     }
   } else {
     // 新規ユーザーの作成（初回ユーザーはadmin、以降はmember）
-    const allUsers = cacheGet<User[]>('all_users');
+    // Firestoreから実際に全ユーザーを取得して判定
+    const allUsers = await getAllUsers();
     const isFirstUser = !allUsers || allUsers.length === 0;
 
     user = await upsertUser({

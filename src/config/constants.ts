@@ -10,7 +10,7 @@ export const QUOTE_SHEET_ID = '14Tpz6Z8Y_6bpvInbSOWvXwV4mZtlm091QjuQcPUOyL8';
 export const QUOTE_SHEET_NAME = '名言DB';
 
 // バックアップスプレッドシート
-export const BACKUP_SHEET_ID = '1b8yd4dMtR-kpfsy6oemB9RXZgQ3zbQWzjwwbQ9B2AZ4';
+export const BACKUP_SHEET_ID = '1nvu4NU7zHq0tBH7iVeMqKDF3DberCaYRU7bWAXD8cvg';
 
 // シート名
 export const SHEET_NAMES = {

@@ -7,7 +7,6 @@ import {
   SLACK_CHANNEL_ID,
   QUOTE_SHEET_ID,
   QUOTE_SHEET_NAME,
-  ACTIONS,
 } from '../config/constants';
 import { AttendanceAction } from '../models/Kintai';
 
@@ -136,12 +135,17 @@ export function postSlackDM(userId: string, text: string): boolean {
 
 /**
  * 勤怠打刻をSlackに通知（出勤・休憩・休憩戻り・退勤）
+ * ⚠️ 通知無効化中 - 復活させる場合は以下のコメントを解除
  */
 export function notifyAttendance(
-  userName: string,
-  action: AttendanceAction,
-  location: string
+  _userName: string,
+  _action: AttendanceAction,
+  _location: string
 ): string | null {
+  // テスト中のため通知を無効化
+  return null;
+
+  /* 通知を復活させる場合は上の return null; を削除して以下のコメントを解除
   try {
     let text = `＊勤怠＊ ${userName} が `;
 
@@ -164,17 +168,23 @@ export function notifyAttendance(
     Logger.log(`勤怠通知エラー: ${e}`);
     return null;
   }
+  */
 }
 
 /**
  * 日報をSlackに通知
+ * ⚠️ 通知無効化中 - 復活させる場合は以下のコメントを解除
  */
 export function notifyDailyReport(
-  userName: string,
-  reportText: string,
-  date: string,
-  threadTs?: string | null
+  _userName: string,
+  _reportText: string,
+  _date: string,
+  _threadTs?: string | null
 ): string | null {
+  // テスト中のため通知を無効化
+  return null;
+
+  /* 通知を復活させる場合は上の return null; を削除して以下のコメントを解除
   try {
     if (!reportText || !reportText.trim()) return null;
 
@@ -185,26 +195,39 @@ export function notifyDailyReport(
     Logger.log(`日報通知エラー: ${e}`);
     return null;
   }
+  */
 }
 
 /**
  * 打刻リマインダーをSlack DMで送信
+ * ⚠️ 通知無効化中 - 復活させる場合は以下のコメントを解除
  */
 export function sendClockInReminder(
-  slackUserId: string,
-  userName: string
+  _slackUserId: string,
+  _userName: string
 ): boolean {
+  // テスト中のため通知を無効化
+  return false;
+
+  /* 通知を復活させる場合は上の return false; を削除して以下のコメントを解除
   const text = `⏰ ${userName}さん、シフト上の出勤時刻から10分経過しましたが、まだ出勤打刻がされていません。打刻をお忘れではないでしょうか？`;
   return postSlackDM(slackUserId, text);
+  */
 }
 
 /**
  * 退勤リマインダーをSlack DMで送信
+ * ⚠️ 通知無効化中 - 復活させる場合は以下のコメントを解除
  */
 export function sendClockOutReminder(
-  slackUserId: string,
-  userName: string
+  _slackUserId: string,
+  _userName: string
 ): boolean {
+  // テスト中のため通知を無効化
+  return false;
+
+  /* 通知を復活させる場合は上の return false; を削除して以下のコメントを解除
   const text = `⏰ ${userName}さん、シフト上の退勤時刻から10分経過しましたが、まだ退勤打刻がされていません。打刻をお忘れではないでしょうか？`;
   return postSlackDM(slackUserId, text);
+  */
 }
