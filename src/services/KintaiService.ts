@@ -69,13 +69,22 @@ export async function getTodayStatus(uid: string): Promise<TodayStatus> {
 
   // 最新のアクションから状態を判定
   const lastAction = todayRecords[todayRecords.length - 1].action;
+  Logger.log(`[DEBUG] getTodayStatus: lastAction="${lastAction}"`);
+  Logger.log(`[DEBUG] getTodayStatus: ACTIONS.CLOCK_IN="${ACTIONS.CLOCK_IN}"`);
+  Logger.log(`[DEBUG] getTodayStatus: ACTIONS.RESUME="${ACTIONS.RESUME}"`);
+  Logger.log(`[DEBUG] getTodayStatus: ACTIONS.BREAK="${ACTIONS.BREAK}"`);
+  Logger.log(`[DEBUG] getTodayStatus: ACTIONS.CLOCK_OUT="${ACTIONS.CLOCK_OUT}"`);
+
   let status: TodayStatus['status'] = 'notClockedIn';
 
   if (lastAction === ACTIONS.CLOCK_IN || lastAction === ACTIONS.RESUME) {
     status = 'clockedIn';
+    Logger.log(`[DEBUG] getTodayStatus: status設定 -> clockedIn`);
   } else if (lastAction === ACTIONS.BREAK) {
     status = 'onBreak';
+    Logger.log(`[DEBUG] getTodayStatus: status設定 -> onBreak`);
   } else if (lastAction === ACTIONS.CLOCK_OUT) {
+    Logger.log(`[DEBUG] getTodayStatus: status設定 -> notClockedIn (退勤済み)`);
     // 退勤済み → 未出勤扱い
     const result: TodayStatus = {
       status: 'notClockedIn',
@@ -85,6 +94,7 @@ export async function getTodayStatus(uid: string): Promise<TodayStatus> {
     return result;
   }
 
+  Logger.log(`[DEBUG] getTodayStatus: 最終status="${status}", record.length=${record.length}`);
   const result: TodayStatus = { status, record };
   cachePut(cacheKey, result, CACHE_DURATION.TODAY_STATUS);
   return result;

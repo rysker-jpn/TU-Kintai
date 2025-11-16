@@ -61,14 +61,22 @@ export async function recordAction(
       };
     }
 
+    Logger.log(`[DEBUG] recordAction: action=${action}, location=${location}`);
     const user = await requireAuth(idToken);
-    const status = await recordAttendance(user, action, location, reportText);
+    Logger.log(`[DEBUG] recordAction: user認証成功 uid=${user.uid}`);
 
-    return {
+    const status = await recordAttendance(user, action, location, reportText);
+    Logger.log(`[DEBUG] recordAction: recordAttendance完了 status=${status.status}, record.length=${status.record.length}`);
+    Logger.log(`[DEBUG] recordAction: record=${JSON.stringify(status.record)}`);
+
+    const response = {
       ok: true,
       status: status.status,
       record: status.record,
     };
+    Logger.log(`[DEBUG] recordAction: レスポンス=${JSON.stringify(response)}`);
+
+    return response;
   } catch (e: any) {
     Logger.log(`recordAction error: ${e}`);
     return {
