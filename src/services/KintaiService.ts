@@ -41,18 +41,30 @@ import { User } from '../models/User';
 export async function getTodayStatus(uid: string): Promise<TodayStatus> {
   const cacheKey = CacheKeys.todayStatus(uid);
   const cached = cacheGet<TodayStatus>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    Logger.log(`[DEBUG] getTodayStatus: キャッシュから返します status=${cached.status}`);
+    return cached;
+  }
 
   const now = new Date();
   const todayStr = toYmd(now);
+  Logger.log(`[DEBUG] getTodayStatus: uid=${uid}, todayStr=${todayStr}`);
 
   // 最新10件の打刻記録を取得
+  Logger.log('[DEBUG] getTodayStatus: getRecentKintaiRecords呼び出し');
   const records = await getRecentKintaiRecords(uid, 10);
+  Logger.log(`[DEBUG] getTodayStatus: 取得した記録数=${records.length}`);
+
+  if (records.length > 0) {
+    Logger.log(`[DEBUG] getTodayStatus: 最初の記録 date=${records[0].date}, action=${records[0].action}`);
+  }
 
   // 今日の記録のみフィルタ
   const todayRecords = records.filter((r) => r.date === todayStr);
+  Logger.log(`[DEBUG] getTodayStatus: 今日の記録数=${todayRecords.length}`);
 
   if (!todayRecords.length) {
+    Logger.log('[DEBUG] getTodayStatus: 今日の記録なし -> notClockedIn');
     const result: TodayStatus = {
       status: 'notClockedIn',
       record: [],
@@ -111,6 +123,7 @@ export async function recordAttendance(
 ): Promise<TodayStatus> {
   const now = new Date();
   const todayStr = toYmd(now);
+  Logger.log(`[DEBUG] recordAttendance: action="${action}", location="${location}", todayStr=${todayStr}`);
 
   // 打刻記録を作成
   const input: KintaiRecordInput = {
@@ -122,7 +135,9 @@ export async function recordAttendance(
     date: todayStr,
   };
 
+  Logger.log('[DEBUG] recordAttendance: createKintaiRecord呼び出し');
   const recordId = await createKintaiRecord(input);
+  Logger.log(`[DEBUG] recordAttendance: 記録作成完了 recordId=${recordId}`);
 
   // スプレッドシートにバックアップ
   backupKintaiRecord({
@@ -132,9 +147,12 @@ export async function recordAttendance(
 
   // キャッシュをクリア
   cacheRemove(CacheKeys.todayStatus(user.uid));
+  Logger.log('[DEBUG] recordAttendance: キャッシュクリア完了');
 
   // 退勤の場合：勤務時間を集計
+  Logger.log(`[DEBUG] recordAttendance: action比較 action="${action}" vs ACTIONS.CLOCK_OUT="${ACTIONS.CLOCK_OUT}"`);
   if (action === ACTIONS.CLOCK_OUT) {
+    Logger.log('[DEBUG] recordAttendance: 退勤処理を実行');
     await calculateAndSaveWorkSummary(user.uid, todayStr);
 
     // 日報を保存
@@ -155,6 +173,7 @@ export async function recordAttendance(
       notifyDailyReport(user.displayName, dailyReportContent, todayStr, threadTs);
     }
 
+    Logger.log('[DEBUG] recordAttendance: 退勤完了 -> notClockedInを返します');
     return {
       status: 'notClockedIn',
       record: [],
@@ -162,10 +181,14 @@ export async function recordAttendance(
   }
 
   // 出勤・休憩・休憩戻りの通知
+  Logger.log('[DEBUG] recordAttendance: 通知送信');
   notifyAttendance(user.displayName, action, location);
 
   // 最新状態を返す
-  return await getTodayStatus(user.uid);
+  Logger.log('[DEBUG] recordAttendance: getTodayStatus呼び出し');
+  const result = await getTodayStatus(user.uid);
+  Logger.log(`[DEBUG] recordAttendance: getTodayStatus完了 status=${result.status}, record.length=${result.record.length}`);
+  return result;
 }
 
 /**
