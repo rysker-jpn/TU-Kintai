@@ -71,10 +71,20 @@ export async function upsertUser(input: UserCreateInput): Promise<User> {
  * ユーザーを取得
  */
 export async function getUser(uid: string): Promise<User | null> {
-  const docPath = `${COLLECTIONS.USERS}/${uid}`;
-  const doc = db().getDocument(docPath);
-  if (!doc) return null;
-  return fieldsToObject(doc.fields) as User;
+  try {
+    const docPath = `${COLLECTIONS.USERS}/${uid}`;
+    const doc = db().getDocument(docPath);
+    if (!doc) return null;
+    return fieldsToObject(doc.fields) as User;
+  } catch (error) {
+    // ドキュメントが存在しない場合はnullを返す
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('not found')) {
+      return null;
+    }
+    // その他のエラーは再スロー
+    throw error;
+  }
 }
 
 /**
