@@ -77,12 +77,22 @@ export async function getUser(uid: string): Promise<User | null> {
     if (!doc) return null;
     return fieldsToObject(doc.fields) as User;
   } catch (error) {
+    // デバッグログ: エラーの詳細を確認
+    Logger.log(`[DEBUG] getUser catch error:${error}`);
+    Logger.log(`[DEBUG] error type: ${typeof error}`);
+    Logger.log(`[DEBUG] error instanceof Error: ${error instanceof Error}`);
+
     // ドキュメントが存在しない場合はnullを返す
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes('not found')) {
+    Logger.log(`[DEBUG] errorMessage: ${errorMessage}`);
+    Logger.log(`[DEBUG] includes 'not found': ${errorMessage.toLowerCase().includes('not found')}`);
+
+    if (errorMessage.toLowerCase().includes('not found')) {
+      Logger.log('[DEBUG] Returning null for not found error');
       return null;
     }
     // その他のエラーは再スロー
+    Logger.log('[DEBUG] Re-throwing error');
     throw error;
   }
 }
