@@ -115,9 +115,17 @@ export async function getOrCreateAppUser(
   } else {
     // 新規ユーザーの作成（初回ユーザーはadmin、以降はmember）
     // Firestoreから実際に全ユーザーを取得して判定
-    const allUsers = await getAllUsers();
-    const isFirstUser = !allUsers || allUsers.length === 0;
+    Logger.log('[DEBUG] getOrCreateAppUser: ユーザーが存在しないため新規作成します');
+    Logger.log(`[DEBUG] authUser: ${JSON.stringify(authUser)}`);
 
+    Logger.log('[DEBUG] getAllUsers() を呼び出します');
+    const allUsers = await getAllUsers();
+    Logger.log(`[DEBUG] getAllUsers() 完了: ${allUsers.length}件`);
+
+    const isFirstUser = !allUsers || allUsers.length === 0;
+    Logger.log(`[DEBUG] isFirstUser: ${isFirstUser}`);
+
+    Logger.log('[DEBUG] upsertUser() を呼び出します');
     user = await upsertUser({
       uid: authUser.uid,
       email: authUser.email,
@@ -125,8 +133,11 @@ export async function getOrCreateAppUser(
       role: isFirstUser ? ROLES.ADMIN : ROLES.MEMBER,
       status: USER_STATUS.ACTIVE,
     });
+    Logger.log('[DEBUG] upsertUser() 完了');
 
+    Logger.log('[DEBUG] backupUser() を呼び出します');
     backupUser(user);
+    Logger.log('[DEBUG] backupUser() 完了');
   }
 
   // キャッシュに保存

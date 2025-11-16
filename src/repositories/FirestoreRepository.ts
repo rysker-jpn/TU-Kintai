@@ -35,35 +35,61 @@ const db = () => getFirestore();
  * ユーザーを作成または更新
  */
 export async function upsertUser(input: UserCreateInput): Promise<User> {
-  const now = new Date();
-  const docPath = `${COLLECTIONS.USERS}/${input.uid}`;
-  const existingDoc = db().getDocument(docPath);
+  try {
+    Logger.log(`[DEBUG] upsertUser: uid=${input.uid}`);
+    const now = new Date();
+    const docPath = `${COLLECTIONS.USERS}/${input.uid}`;
 
-  if (existingDoc) {
-    // 既存ユーザーの更新
-    const existing = fieldsToObject(existingDoc.fields) as User;
-    const updated: Partial<User> = {
-      email: input.email || existing.email,
-      displayName: input.displayName || existing.displayName,
-      updatedAt: now,
-    };
-    const fields = objectToFields(updated);
-    db().updateDocument(docPath, fields, true);
-    return { ...existing, ...updated } as User;
-  } else {
-    // 新規ユーザーの作成
-    const newUser: User = {
-      uid: input.uid,
-      email: input.email,
-      displayName: input.displayName,
-      role: input.role || 'member',
-      status: input.status || 'active',
-      createdAt: now,
-      updatedAt: now,
-    };
-    const fields = objectToFields(newUser);
-    db().createDocument(COLLECTIONS.USERS, fields, input.uid);
-    return newUser;
+    Logger.log('[DEBUG] upsertUser: 既存ドキュメントをチェックします');
+    let existingDoc;
+    try {
+      existingDoc = db().getDocument(docPath);
+    } catch (error) {
+      // ドキュメントが存在しない場合はnullとして扱う
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.toLowerCase().includes('not found')) {
+        Logger.log('[DEBUG] upsertUser: ドキュメントが存在しません（新規作成）');
+        existingDoc = null;
+      } else {
+        throw error;
+      }
+    }
+
+    if (existingDoc) {
+      Logger.log('[DEBUG] upsertUser: 既存ユーザーを更新します');
+      // 既存ユーザーの更新
+      const existing = fieldsToObject(existingDoc.fields) as User;
+      const updated: Partial<User> = {
+        email: input.email || existing.email,
+        displayName: input.displayName || existing.displayName,
+        updatedAt: now,
+      };
+      const fields = objectToFields(updated);
+      db().updateDocument(docPath, fields, true);
+      Logger.log('[DEBUG] upsertUser: 既存ユーザー更新完了');
+      return { ...existing, ...updated } as User;
+    } else {
+      Logger.log('[DEBUG] upsertUser: 新規ユーザーを作成します');
+      // 新規ユーザーの作成
+      const newUser: User = {
+        uid: input.uid,
+        email: input.email,
+        displayName: input.displayName,
+        role: input.role || 'member',
+        status: input.status || 'active',
+        createdAt: now,
+        updatedAt: now,
+      };
+      Logger.log(`[DEBUG] upsertUser: newUser=${JSON.stringify(newUser)}`);
+      const fields = objectToFields(newUser);
+      Logger.log('[DEBUG] upsertUser: createDocument を呼び出します');
+      db().createDocument(COLLECTIONS.USERS, fields, input.uid);
+      Logger.log('[DEBUG] upsertUser: 新規ユーザー作成完了');
+      return newUser;
+    }
+  } catch (error) {
+    Logger.log(`[DEBUG] upsertUser エラー: ${error}`);
+    throw error;
   }
 }
 
@@ -114,8 +140,15 @@ export async function updateUser(uid: string, input: UserUpdateInput): Promise<v
  * 全ユーザーを取得
  */
 export async function getAllUsers(): Promise<User[]> {
-  const docs = db().query(COLLECTIONS.USERS).Execute();
-  return docs.map((doc) => fieldsToObject(doc.fields) as User);
+  try {
+    Logger.log('[DEBUG] getAllUsers: クエリを実行します');
+    const docs = db().query(COLLECTIONS.USERS).Execute();
+    Logger.log(`[DEBUG] getAllUsers: ${docs ? docs.length : 0}件取得しました`);
+    return docs.map((doc) => fieldsToObject(doc.fields) as User);
+  } catch (error) {
+    Logger.log(`[DEBUG] getAllUsers エラー: ${error}`);
+    throw error;
+  }
 }
 
 /* ========== 勤怠打刻 ========== */
