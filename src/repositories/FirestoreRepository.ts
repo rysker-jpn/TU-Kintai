@@ -20,6 +20,7 @@ import {
   DailyReport,
   DailyReportInput,
 } from '../models/Kintai';
+// PunchEvent is used by CorrectionRequest but not directly imported here
 import {
   ShiftEntry,
   ShiftEntryInput,
@@ -215,6 +216,37 @@ export async function getRecentKintaiRecords(uid: string, limit: number = 10): P
     .Execute();
 
   return docs.map((doc) => fieldsToObject(doc.fields) as KintaiRecord).reverse();
+}
+
+/**
+ * 指定日の打刻記録を全削除（打刻修正承認時に使用）
+ */
+export async function deleteKintaiRecordsByDate(uid: string, date: string): Promise<void> {
+  const collectionPath = `${COLLECTIONS.KINTAI}/${uid}/records`;
+  const docs = db()
+    .query(collectionPath)
+    .Where('date', '==', date)
+    .Execute();
+
+  for (const doc of docs) {
+    const record = fieldsToObject(doc.fields) as KintaiRecord;
+    const docPath = `${collectionPath}/${record.recordId}`;
+    db().deleteDocument(docPath);
+  }
+}
+
+/**
+ * 勤務時間サマリーを削除（打刻修正承認時に再計算用）
+ */
+export async function deleteWorkSummary(uid: string, date: string): Promise<void> {
+  const [year, month] = date.split('/').map(Number);
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+  const docPath = `${COLLECTIONS.WORKSUM}/${uid}/${monthKey}/daily/${date}/summary`;
+  try {
+    db().deleteDocument(docPath);
+  } catch (_e) {
+    // ドキュメントが存在しない場合は無視
+  }
 }
 
 /* ========== 勤務時間サマリー ========== */
@@ -452,13 +484,17 @@ export async function getPendingCorrectionRequests(): Promise<CorrectionRequest[
 /**
  * 打刻修正申請を承認
  */
-export async function approveCorrectionRequest(requestId: string): Promise<CorrectionRequest | null> {
+export async function approveCorrectionRequest(requestId: string, approvedBy: string): Promise<CorrectionRequest | null> {
   const docPath = `${COLLECTIONS.CORRECTION_REQUESTS}/${requestId}`;
   const doc = db().getDocument(docPath);
   if (!doc) return null;
 
   const request = fieldsToObject(doc.fields) as CorrectionRequest;
-  const fields = objectToFields({ status: 'approved' });
+  const fields = objectToFields({
+    status: 'approved',
+    approvedAt: new Date(),
+    approvedBy,
+  });
   db().updateDocument(docPath, fields, true);
 
   return request;
@@ -467,9 +503,13 @@ export async function approveCorrectionRequest(requestId: string): Promise<Corre
 /**
  * 打刻修正申請を却下
  */
-export async function denyCorrectionRequest(requestId: string): Promise<void> {
+export async function denyCorrectionRequest(requestId: string, approvedBy: string): Promise<void> {
   const docPath = `${COLLECTIONS.CORRECTION_REQUESTS}/${requestId}`;
-  const fields = objectToFields({ status: 'denied' });
+  const fields = objectToFields({
+    status: 'denied',
+    approvedAt: new Date(),
+    approvedBy,
+  });
   db().updateDocument(docPath, fields, true);
 }
 

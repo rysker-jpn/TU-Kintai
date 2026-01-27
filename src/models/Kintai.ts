@@ -47,39 +47,33 @@ export interface MonthSummary {
   remoteMin: number;
 }
 
+export interface PunchEvent {
+  time: string; // HH:mm
+  action: AttendanceAction;
+  location: WorkLocation;
+}
+
 export interface CorrectionRequest {
   requestId: string;
   uid: string;
   userName: string;
   date: string; // yyyy/MM/dd
-  recordType: 'clock_in' | 'clock_out' | 'break' | 'resume';
-  before: {
-    time: string; // HH:mm
-    location?: WorkLocation;
-  };
-  after: {
-    time: string; // HH:mm
-    location?: WorkLocation;
-  };
   reason: string;
+  oldPunches: PunchEvent[];
+  newPunches: PunchEvent[];
   status: 'pending' | 'approved' | 'denied';
   createdAt: Date;
+  approvedAt?: Date;
+  approvedBy?: string;
 }
 
 export interface CorrectionRequestInput {
   uid: string;
   userName: string;
   date: string;
-  recordType: 'clock_in' | 'clock_out' | 'break' | 'resume';
-  before: {
-    time: string;
-    location?: WorkLocation;
-  };
-  after: {
-    time: string;
-    location?: WorkLocation;
-  };
   reason: string;
+  oldPunches: PunchEvent[];
+  newPunches: PunchEvent[];
 }
 
 export interface DailyReport {

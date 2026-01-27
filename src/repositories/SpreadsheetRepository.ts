@@ -367,26 +367,25 @@ export function backupCorrectionRequest(requestId: string, request: any): void {
       '日付',
       'uid',
       'ユーザー',
-      '種別',
-      '修正前_時刻',
-      '修正前_場所',
-      '修正後_時刻',
-      '修正後_場所',
+      '修正前_JSON',
+      '修正後_JSON',
       '理由',
+      'status',
       '作成At',
     ]);
+
+    const oldJson = JSON.stringify(request.oldPunches || []);
+    const newJson = JSON.stringify(request.newPunches || []);
 
     sheet.appendRow([
       requestId,
       request.date,
       request.uid,
       request.userName,
-      request.recordType,
-      request.before.time,
-      request.before.location || '',
-      request.after.time,
-      request.after.location || '',
+      oldJson,
+      newJson,
       request.reason,
+      'pending',
       formatDate(request.createdAt),
     ]);
   } catch (e) {

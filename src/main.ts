@@ -68,6 +68,27 @@ async function getKintaiHistoryForDate(
   return await AttendanceAPI.getKintaiHistoryForDateAPI(idToken, dateYmd, uidOpt);
 }
 
+/**
+ * 打刻修正申請を作成
+ */
+async function createKintaiChangeRequest(idToken: string, payload: any) {
+  return await AttendanceAPI.createKintaiChangeRequestAPI(idToken, payload);
+}
+
+/**
+ * 打刻修正申請を承認
+ */
+async function approveKintaiChange(idToken: string, requestId: string) {
+  return await AttendanceAPI.approveKintaiChangeAPI(idToken, requestId);
+}
+
+/**
+ * 打刻修正申請を却下
+ */
+async function denyKintaiChange(idToken: string, requestId: string) {
+  return await AttendanceAPI.denyKintaiChangeAPI(idToken, requestId);
+}
+
 // ========== シフトAPI ==========
 
 /**
@@ -169,6 +190,9 @@ global.recordAction = recordAction;
 global.getWorksumMonth = getWorksumMonth;
 global.getWorksumRange = getWorksumRange;
 global.getKintaiHistoryForDate = getKintaiHistoryForDate;
+global.createKintaiChangeRequest = createKintaiChangeRequest;
+global.approveKintaiChange = approveKintaiChange;
+global.denyKintaiChange = denyKintaiChange;
 
 // シフトAPI
 global.listShiftsRange = listShiftsRange;

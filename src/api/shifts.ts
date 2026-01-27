@@ -14,6 +14,7 @@ import {
   approveRequest,
   denyRequest,
 } from '../services/ShiftService';
+import { getPendingKintaiRequests } from '../services/KintaiService';
 import { ShiftEntryInput } from '../models/Shift';
 import { ERROR_MESSAGES } from '../config/constants';
 
@@ -144,33 +145,64 @@ export async function createShiftChangeRequest(idToken: string, payload: any) {
 }
 
 /**
- * 保留中のシフト修正申請を取得（管理者用）
+ * 保留中の申請を取得（管理者用）：シフト + 打刻修正の両方を統合して返す
  */
 export async function listPendingRequests(idToken: string) {
   try {
     await requireAdmin(idToken);
 
-    const requests = await getPendingRequests();
+    const items: any[] = [];
 
-    const items = requests.map((req) => ({
-      requestId: req.requestId,
-      entryId: req.entryId,
-      date: req.date,
-      uid: req.uid,
-      user: req.userName,
-      before: {
-        kind: req.before.kind,
-        start: req.before.start,
-        end: req.before.end,
-      },
-      after: {
-        kind: req.after.kind,
-        start: req.after.start,
-        end: req.after.end,
-      },
-      reason: req.reason,
-      createdAt: req.createdAt.toISOString(),
-    }));
+    // シフト修正申請
+    const shiftRequests = await getPendingRequests();
+    for (const req of shiftRequests) {
+      items.push({
+        type: 'shift',
+        requestId: req.requestId,
+        entryId: req.entryId,
+        date: req.date,
+        uid: req.uid,
+        user: req.userName,
+        before: {
+          kind: req.before.kind,
+          start: req.before.start,
+          end: req.before.end,
+        },
+        after: {
+          kind: req.after.kind,
+          start: req.after.start,
+          end: req.after.end,
+        },
+        reason: req.reason,
+      });
+    }
+
+    // 打刻修正申請
+    const kintaiRequests = await getPendingKintaiRequests();
+    for (const req of kintaiRequests) {
+      items.push({
+        type: 'kintai',
+        requestId: req.requestId,
+        date: req.date,
+        uid: req.uid,
+        user: req.userName,
+        before: req.oldPunches.map((p) => ({
+          time: p.time,
+          timeDisp: p.time,
+          action: p.action,
+          location: p.location,
+        })),
+        after: req.newPunches.map((p) => ({
+          time: p.time,
+          action: p.action,
+          location: p.location,
+        })),
+        reason: req.reason,
+      });
+    }
+
+    // 日付順ソート
+    items.sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
     return {
       ok: true,

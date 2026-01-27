@@ -11,11 +11,18 @@ import {
   getWorkSummaryByMonth,
   saveDailyReport,
   getKintaiRecordsByRange,
+  deleteKintaiRecordsByDate,
+  deleteWorkSummary,
+  createCorrectionRequest as createCorrectionRequestRepo,
+  getPendingCorrectionRequests as getPendingCorrectionRequestsRepo,
+  approveCorrectionRequest as approveCorrectionRequestRepo,
+  denyCorrectionRequest as denyCorrectionRequestRepo,
 } from '../repositories/FirestoreRepository';
 import {
   backupKintaiRecord,
   backupWorkSummary,
   backupDailyReport,
+  backupCorrectionRequest,
 } from '../repositories/SpreadsheetRepository';
 import { notifyAttendance, notifyDailyReport } from './NotificationService';
 import { ACTIONS, CACHE_DURATION } from '../config/constants';
@@ -32,6 +39,9 @@ import {
   KintaiRecordInput,
   KintaiRecord,
   DailyReportInput,
+  CorrectionRequest,
+  CorrectionRequestInput,
+  PunchEvent,
 } from '../models/Kintai';
 import { User } from '../models/User';
 
@@ -474,4 +484,166 @@ export async function getKintaiHistoryForDate(
     events,
     totalMin,
   };
+}
+
+/* ========== 打刻修正申請 ========== */
+
+/**
+ * 打刻修正申請を作成
+ */
+export async function createKintaiChangeRequest(
+  user: User,
+  date: string,
+  reason: string,
+  afterPunches: PunchEvent[]
+): Promise<string> {
+  if (!reason.trim()) {
+    throw new Error('理由は必須です');
+  }
+  if (!afterPunches.length) {
+    throw new Error('少なくとも1つの打刻が必要です');
+  }
+
+  // アクション検証
+  const validActions: AttendanceAction[] = [ACTIONS.CLOCK_IN as AttendanceAction, ACTIONS.BREAK as AttendanceAction, ACTIONS.RESUME as AttendanceAction, ACTIONS.CLOCK_OUT as AttendanceAction];
+  for (const p of afterPunches) {
+    if (!validActions.includes(p.action)) {
+      throw new Error(`不正なアクション: ${p.action}`);
+    }
+    if (!/^\d{2}:\d{2}$/.test(p.time)) {
+      throw new Error('時刻はHH:mm形式で指定してください');
+    }
+  }
+
+  // 現在の打刻履歴を取得（before）
+  const currentRecords = await getKintaiRecordsByDate(user.uid, date);
+  const oldPunches: PunchEvent[] = currentRecords.map((r) => ({
+    time: formatDate(r.timestamp, 'HH:mm'),
+    action: r.action,
+    location: r.location,
+  }));
+
+  const input: CorrectionRequestInput = {
+    uid: user.uid,
+    userName: user.displayName,
+    date,
+    reason: reason.trim(),
+    oldPunches,
+    newPunches: afterPunches,
+  };
+
+  const requestId = await createCorrectionRequestRepo(input);
+
+  // バックアップ
+  backupCorrectionRequest(requestId, {
+    ...input,
+    createdAt: new Date(),
+  });
+
+  return requestId;
+}
+
+/**
+ * 保留中の打刻修正申請を取得
+ */
+export async function getPendingKintaiRequests(): Promise<CorrectionRequest[]> {
+  return await getPendingCorrectionRequestsRepo();
+}
+
+/**
+ * 打刻修正申請を承認（管理者用）
+ * - 対象日の打刻記録を全削除→再作成
+ * - 勤務時間サマリーを再計算
+ */
+export async function approveKintaiRequest(
+  requestId: string,
+  adminEmail: string
+): Promise<void> {
+  const request = await approveCorrectionRequestRepo(requestId, adminEmail);
+  if (!request) {
+    throw new Error('申請が見つかりません');
+  }
+
+  const uid = request.uid;
+  const date = request.date;
+  const newPunches = request.newPunches;
+
+  // 1. 対象日の既存打刻記録を全削除
+  await deleteKintaiRecordsByDate(uid, date);
+
+  // 2. 新しい打刻記録を作成
+  for (const punch of newPunches) {
+    const [hh, mm] = punch.time.split(':').map(Number);
+    const [year, month, day] = date.split('/').map(Number);
+    const timestamp = new Date(year, month - 1, day, hh, mm, 0);
+
+    const input: KintaiRecordInput = {
+      uid,
+      userName: request.userName,
+      action: punch.action,
+      location: punch.location,
+      timestamp,
+      date,
+    };
+
+    const recordId = await createKintaiRecord(input);
+    backupKintaiRecord({ recordId, ...input });
+  }
+
+  // 3. 勤務時間サマリーを再計算
+  await deleteWorkSummary(uid, date);
+  await recalculateWorkSummary(uid, date);
+
+  // キャッシュクリア
+  cacheRemove(CacheKeys.todayStatus(uid));
+}
+
+/**
+ * 打刻修正申請を却下（管理者用）
+ */
+export async function denyKintaiRequest(
+  requestId: string,
+  adminEmail: string
+): Promise<void> {
+  await denyCorrectionRequestRepo(requestId, adminEmail);
+}
+
+/**
+ * 勤務時間を再計算して保存（打刻修正承認後）
+ */
+async function recalculateWorkSummary(uid: string, dateStr: string): Promise<void> {
+  const records = await getKintaiRecordsByDate(uid, dateStr);
+  if (!records.length) return;
+
+  let checkIn: Date | null = null;
+  let checkOut: Date | null = null;
+  let breakStart: Date | null = null;
+  let breakTotalMs = 0;
+  let location: WorkLocation = '';
+
+  for (let i = records.length - 1; i >= 0; i--) {
+    const rec = records[i];
+    if (rec.action === ACTIONS.CLOCK_OUT && !checkOut) {
+      checkOut = rec.timestamp;
+    } else if (rec.action === ACTIONS.RESUME && !breakStart) {
+      breakStart = rec.timestamp;
+    } else if (rec.action === ACTIONS.BREAK && breakStart) {
+      breakTotalMs += breakStart.getTime() - rec.timestamp.getTime();
+      breakStart = null;
+    } else if (rec.action === ACTIONS.CLOCK_IN) {
+      checkIn = rec.timestamp;
+      location = rec.location;
+      break;
+    }
+  }
+
+  if (!checkIn || !checkOut) return;
+
+  const workMs = checkOut.getTime() - checkIn.getTime() - breakTotalMs;
+  const totalMin = Math.max(0, Math.floor(workMs / 60000));
+  const officeMin = location === 'オフィス' ? totalMin : 0;
+  const remoteMin = location === 'リモート' ? totalMin : 0;
+
+  await saveWorkSummary({ uid, date: dateStr, totalMin, officeMin, remoteMin, location });
+  backupWorkSummary({ uid, date: dateStr, totalMin, officeMin, remoteMin, location });
 }

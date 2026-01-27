@@ -3,15 +3,18 @@
  * フロントエンドから呼ばれるエンドポイント
  */
 
-import { requireAuth } from '../services/AuthService';
+import { requireAuth, requireAdmin } from '../services/AuthService';
 import {
   recordAttendance,
   getTodayStatus,
   getMonthSummary,
   getRangeSummary,
   getKintaiHistoryForDate,
+  createKintaiChangeRequest,
+  approveKintaiRequest,
+  denyKintaiRequest,
 } from '../services/KintaiService';
-import { AttendanceAction, WorkLocation } from '../models/Kintai';
+import { AttendanceAction, WorkLocation, PunchEvent } from '../models/Kintai';
 import { ERROR_MESSAGES } from '../config/constants';
 
 /**
@@ -174,6 +177,79 @@ export async function getKintaiHistoryForDateAPI(
     };
   } catch (e: any) {
     Logger.log(`getKintaiHistoryForDate error: ${e}`);
+    return {
+      ok: false,
+      error: e.message || ERROR_MESSAGES.SERVER_ERROR,
+    };
+  }
+}
+
+/**
+ * 打刻修正申請を作成
+ */
+export async function createKintaiChangeRequestAPI(
+  idToken: string,
+  payload: any
+) {
+  try {
+    const user = await requireAuth(idToken);
+
+    const date = String(payload.date || '').replace(/-/g, '/');
+    const reason = String(payload.reason || '').trim();
+    const after: PunchEvent[] = (payload.after || []).map((a: any) => ({
+      time: String(a.time || ''),
+      action: String(a.action || '') as AttendanceAction,
+      location: String(a.location || '') as WorkLocation,
+    }));
+
+    if (!date || !reason || !after.length) {
+      return { ok: false, error: 'date/after/reason は必須です' };
+    }
+
+    const requestId = await createKintaiChangeRequest(user, date, reason, after);
+    return { ok: true, requestId };
+  } catch (e: any) {
+    Logger.log(`createKintaiChangeRequest error: ${e}`);
+    return {
+      ok: false,
+      error: e.message || ERROR_MESSAGES.SERVER_ERROR,
+    };
+  }
+}
+
+/**
+ * 打刻修正申請を承認（管理者用）
+ */
+export async function approveKintaiChangeAPI(
+  idToken: string,
+  requestId: string
+) {
+  try {
+    const admin = await requireAdmin(idToken);
+    await approveKintaiRequest(requestId, admin.email);
+    return { ok: true };
+  } catch (e: any) {
+    Logger.log(`approveKintaiChange error: ${e}`);
+    return {
+      ok: false,
+      error: e.message || ERROR_MESSAGES.SERVER_ERROR,
+    };
+  }
+}
+
+/**
+ * 打刻修正申請を却下（管理者用）
+ */
+export async function denyKintaiChangeAPI(
+  idToken: string,
+  requestId: string
+) {
+  try {
+    const admin = await requireAdmin(idToken);
+    await denyKintaiRequest(requestId, admin.email);
+    return { ok: true };
+  } catch (e: any) {
+    Logger.log(`denyKintaiChange error: ${e}`);
     return {
       ok: false,
       error: e.message || ERROR_MESSAGES.SERVER_ERROR,
